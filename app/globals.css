@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-tea-50 text-tea-900 antialiased;
+}
+
+/* Safe area padding for mobile notch/home indicator */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Big touch target minimum for mobile */
+.touch-target {
+  @apply min-h-[44px] min-w-[44px];
+}
+
+/* Smooth page transitions */
+main {
+  @apply transition-opacity duration-150;
+}
+
+/* Number inputs: hide arrows on mobile */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-tea-200 rounded-full;
+}
