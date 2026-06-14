@@ -101,29 +101,36 @@ export default function CollectPage() {
   }
 
   async function lookupOwnerById(ownerId: string) {
-    const { data: ownerProfile } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .eq("id", ownerId)
-      .single();
-    if (!ownerProfile) { toast.error("Owner not found"); return; }
+    // Use an edge function (service role) so we can resolve an owner who isn't
+    // linked to our org yet — RLS would otherwise hide their profile.
+    const { data, error } = await supabase.functions.invoke("lookup-owner", {
+      body: { owner_id: ownerId },
+    });
+    if (error || !data || data.error) {
+      toast.error(data?.error ?? "Owner not found");
+      return;
+    }
 
-    // Find their fields
-    const { data: fields } = await supabase
-      .from("fields")
-      .select("id, name, rate_per_kg_cents")
-      .eq("owner_id", ownerId)
-      .limit(1);
+    const fields = data.fields as {
+      id: string;
+      name: string;
+      rate_per_kg_cents: number;
+    }[];
 
-    if (fields && fields.length === 1) {
+    if (!fields || fields.length === 0) {
+      toast.error(`${data.full_name} has no fields yet — add one first`);
+      return;
+    }
+
+    if (fields.length === 1) {
       setSelectedField({
         id: fields[0].id,
         name: fields[0].name,
-        owner_id: ownerId,
-        owner_name: ownerProfile.full_name,
+        owner_id: data.id,
+        owner_name: data.full_name,
         rate_per_kg_cents: fields[0].rate_per_kg_cents,
       });
-      toast.success(`Loaded: ${ownerProfile.full_name} — ${fields[0].name}`);
+      toast.success(`Loaded: ${data.full_name} — ${fields[0].name}`);
     } else {
       toast("Owner has multiple fields — search by field name instead", { icon: "ℹ️" });
     }

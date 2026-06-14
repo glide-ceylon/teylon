@@ -9,7 +9,12 @@ import { AppShell, PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
+import { Check, Copy } from "lucide-react";
 import toast from "react-hot-toast";
+
+function suggestPassword() {
+  return Math.random().toString(36).slice(2, 8) + Math.floor(10 + Math.random() * 89);
+}
 
 export default function NewDriverPage() {
   const { data: profile } = useProfile();
@@ -20,28 +25,97 @@ export default function NewDriverPage() {
   const [phone, setPhone] = useState("");
   const [lorryId, setLorryId] = useState("");
   const [vehicle, setVehicle] = useState("");
+  const [password, setPassword] = useState(suggestPassword);
+
+  // After success, show the credentials the agent must hand to the driver.
+  const [created, setCreated] = useState<{ phone: string; password: string } | null>(null);
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!phone.startsWith("+")) throw new Error("Phone must be E.164, e.g. +94771234567");
-      const { error } = await supabase.functions.invoke("create-driver", {
+      if (password.length < 6) throw new Error("Password must be at least 6 characters");
+      const { data, error } = await supabase.functions.invoke("create-driver", {
         body: {
           name,
           phone,
+          password,
           lorry_identifier: lorryId,
           vehicle_details: vehicle || null,
           org_id: profile!.org_id,
         },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as { phone: string; password: string };
     },
-    onSuccess: () => {
-      toast.success(`Driver account created — ${name} can now log in with ${phone}`);
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["drivers"] });
-      router.push("/drivers");
+      setCreated({ phone: data.phone, password: data.password });
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  async function copy(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error("Copy not supported");
+    }
+  }
+
+  // ── Credentials screen ──
+  if (created) {
+    return (
+      <AppShell>
+        <PageHeader title="Driver created" />
+        <div className="px-4 md:px-6 pb-8 max-w-lg space-y-4">
+          <Card className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+              <Check className="h-8 w-8 text-green-600" />
+            </div>
+            <p className="font-semibold text-tea-900">{name} can now log in</p>
+            <p className="text-sm text-tea-500">
+              Share these login details with the driver. They sign in on the
+              <strong> Phone</strong> tab using <strong>“Use password”</strong>.
+            </p>
+          </Card>
+
+          <Card className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-tea-400">Phone</p>
+                <p className="font-mono text-lg text-tea-900">{created.phone}</p>
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => copy(created.phone, "Phone")}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-tea-100 pt-3">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-tea-400">Password</p>
+                <p className="font-mono text-lg text-tea-900">{created.password}</p>
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => copy(created.password, "Password")}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="bg-amber-50 border-amber-200">
+            <p className="text-sm text-amber-700">
+              Save this password now — it won&apos;t be shown again. The driver can
+              keep using it, or change it later.
+            </p>
+          </Card>
+
+          <Button fullWidth size="lg" onClick={() => router.push("/drivers")}>
+            Done
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -50,8 +124,9 @@ export default function NewDriverPage() {
       <div className="px-4 md:px-6 pb-8 max-w-lg space-y-4">
         <Card className="bg-tea-50 border-tea-200">
           <p className="text-sm text-tea-600">
-            Creating a driver account lets them log into Teylon with their phone number.
-            Give them the phone number you enter here — they use it to sign in with OTP.
+            This creates a login for the driver. They sign in with their{" "}
+            <strong>phone number + password</strong> — no SMS code needed. You&apos;ll
+            get the credentials to hand over on the next screen.
           </p>
         </Card>
 
@@ -70,6 +145,19 @@ export default function NewDriverPage() {
           inputMode="tel"
           hint="Must be E.164 format with country code"
         />
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Input
+              label="Password *"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              hint="Share this with the driver — at least 6 characters"
+            />
+          </div>
+          <Button variant="secondary" onClick={() => setPassword(suggestPassword())}>
+            New
+          </Button>
+        </div>
         <Input
           label="Lorry / vehicle identifier *"
           placeholder="e.g. WP-1234 or Lorry 3"
@@ -89,7 +177,7 @@ export default function NewDriverPage() {
           size="lg"
           onClick={() => mutation.mutate()}
           loading={mutation.isPending}
-          disabled={!name.trim() || !phone.trim() || !lorryId.trim()}
+          disabled={!name.trim() || !phone.trim() || !lorryId.trim() || password.length < 6}
         >
           Create driver account
         </Button>

@@ -32,11 +32,18 @@ serve(async (req) => {
       throw new Error("Only agents can create drivers");
     }
 
-    const { name, phone, lorry_identifier, vehicle_details } = await req.json();
+    const { name, phone, lorry_identifier, vehicle_details, password } = await req.json();
 
     if (!name || !phone || !lorry_identifier) {
       throw new Error("name, phone, and lorry_identifier are required");
     }
+
+    // Drivers sign in with phone + password (no SMS/OTP needed). If the agent
+    // didn't choose one, generate a short readable password to hand over.
+    const finalPassword: string =
+      password && password.length >= 6
+        ? password
+        : crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 
     // Admin client for bypassing RLS
     const adminClient = createClient(
@@ -47,6 +54,7 @@ serve(async (req) => {
     // Create auth user for driver
     const { data: newUser, error: createUserError } = await adminClient.auth.admin.createUser({
       phone: phone,
+      password: finalPassword,
       phone_confirm: true,
       user_metadata: { full_name: name },
     });
@@ -89,7 +97,12 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ driver_id: driver.id, user_id: driverUserId }),
+      JSON.stringify({
+        driver_id: driver.id,
+        user_id: driverUserId,
+        phone: phone,
+        password: finalPassword,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

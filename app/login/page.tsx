@@ -17,10 +17,11 @@ export default function LoginPage() {
   const [method, setMethod] = useState<Method>("phone");
   const [loading, setLoading] = useState(false);
 
-  // ── Phone OTP state ──
+  // ── Phone state ──
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [phoneStage, setPhoneStage] = useState<PhoneStage>("phone");
+  const [phoneMode, setPhoneMode] = useState<"otp" | "password">("otp");
 
   // ── Email state ──
   const [emailStage, setEmailStage] = useState<EmailStage>("signin");
@@ -47,6 +48,25 @@ export default function LoginPage() {
       phone,
       token: otp,
       type: "sms",
+    });
+    setLoading(false);
+    if (error) return toast.error(error.message);
+
+    const userId = data.user?.id;
+    if (!userId) return toast.error("Login failed — please try again");
+
+    router.replace(await getPostLoginPath(userId));
+  }
+
+  async function signInWithPhonePassword() {
+    if (!phone.startsWith("+")) {
+      return toast.error("Enter phone in E.164 format, e.g. +94771234567");
+    }
+    if (!password) return toast.error("Enter your password");
+    setLoading(true);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      phone,
+      password,
     });
     setLoading(false);
     if (error) return toast.error(error.message);
@@ -148,8 +168,46 @@ export default function LoginPage() {
         </button>
       </div>
 
-      {/* ── PHONE ── */}
-      {method === "phone" &&
+      {/* ── PHONE: password mode (drivers) ── */}
+      {method === "phone" && phoneMode === "password" && (
+        <div className="flex flex-col gap-4">
+          <Input
+            label="Phone number"
+            placeholder="+94771234567"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            inputMode="tel"
+            autoComplete="tel"
+            hint="Include country code, e.g. +94 for Sri Lanka"
+          />
+          <Input
+            label="Password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            autoComplete="current-password"
+          />
+          <Button
+            onClick={signInWithPhonePassword}
+            disabled={!phone || !password}
+            loading={loading}
+            fullWidth
+            size="lg"
+          >
+            Sign in
+          </Button>
+          <button
+            onClick={() => setPhoneMode("otp")}
+            className="text-sm text-tea-500 underline self-center"
+          >
+            Use OTP instead
+          </button>
+        </div>
+      )}
+
+      {/* ── PHONE: OTP mode ── */}
+      {method === "phone" && phoneMode === "otp" &&
         (phoneStage === "phone" ? (
           <div className="flex flex-col gap-4">
             <Input
@@ -164,6 +222,12 @@ export default function LoginPage() {
             <Button onClick={sendOtp} disabled={!phone} loading={loading} fullWidth size="lg">
               Send OTP
             </Button>
+            <button
+              onClick={() => setPhoneMode("password")}
+              className="text-sm text-tea-500 underline self-center"
+            >
+              Sign in with password instead
+            </button>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
