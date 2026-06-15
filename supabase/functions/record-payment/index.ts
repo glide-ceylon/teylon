@@ -65,12 +65,26 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // Resolve the org this payment belongs to. Owners have no org of their own,
+    // so a payment they make (e.g. paying a worker from pocket) is attributed to
+    // the agent's org that adopted them — that's who reimburses at settlement.
+    let paymentOrgId = callerProfile.org_id;
+    if (!paymentOrgId && callerProfile.role === "owner") {
+      const { data: link } = await adminClient
+        .from("agent_owners")
+        .select("org_id")
+        .eq("owner_id", user.id)
+        .limit(1)
+        .maybeSingle();
+      paymentOrgId = link?.org_id ?? null;
+    }
+
     // Insert payment record. `disbursed_by` defaults to the caller, but an owner
     // paying a worker from their own pocket is recorded with from_pocket=true.
     const { data: payment, error: paymentError } = await adminClient
       .from("payments")
       .insert({
-        org_id: callerProfile.org_id,
+        org_id: paymentOrgId,
         charged_to: owner_id,
         disbursed_by: disbursed_by ?? user.id,
         driver_id: driver_id ?? null,

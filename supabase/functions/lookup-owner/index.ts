@@ -50,6 +50,14 @@ serve(async (req) => {
     if (ownerError || !owner) throw new Error("Owner not found");
     if (owner.role !== "owner") throw new Error("That QR code is not an owner");
 
+    // Adopt the owner into the caller's org so they show in owner lists.
+    await adminClient
+      .from("agent_owners")
+      .upsert(
+        { org_id: callerProfile.org_id, owner_id: owner.id },
+        { onConflict: "org_id,owner_id" }
+      );
+
     const { data: fields } = await adminClient
       .from("fields")
       .select("id, name, rate_per_kg_cents, tea_rate_cents")

@@ -36,7 +36,6 @@ function NewDeductionForm() {
         .from("profiles")
         .select("id, full_name")
         .eq("role", "owner")
-        .eq("org_id", profile!.org_id)
         .order("full_name");
       return data ?? [];
     },

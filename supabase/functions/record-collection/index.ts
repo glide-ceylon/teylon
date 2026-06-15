@@ -68,6 +68,14 @@ serve(async (req) => {
     if (fieldErr || !field) throw new Error("Field not found");
     if (!owner_id) owner_id = field.owner_id;
 
+    // Adopt the owner into the org so they appear in the agent's owner lists.
+    await adminClient
+      .from("agent_owners")
+      .upsert(
+        { org_id: callerProfile.org_id, owner_id },
+        { onConflict: "org_id,owner_id" }
+      );
+
     // Tea rate precedence: explicit override → field rate → org default.
     let teaRateCents = teaRateInput;
     let teaRateOverriddenBy: string | null = null;

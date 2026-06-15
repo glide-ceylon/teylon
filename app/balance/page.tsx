@@ -18,11 +18,12 @@ export default function BalancePage() {
       const { data } = await supabase
         .from("collection_visits")
         .select(`
-          id, collected_at, total_kg, owner_confirmed, status,
-          fields(name, rate_per_kg_cents)
+          id, collected_at, total_kg, owner_confirmed, status, tea_rate_cents, pay_mode,
+          fields(name, tea_rate_cents)
         `)
         .eq("owner_id", profile!.id)
         .eq("owner_confirmed", true)
+        .neq("pay_mode", "instant")
         .neq("status", "settled")
         .order("collected_at", { ascending: false });
       return data ?? [];
@@ -70,20 +71,32 @@ export default function BalancePage() {
     enabled: !!profile?.id,
   });
 
-  const grossEarned = (visits ?? []).reduce((sum: number, v: any) => {
-    const rate = (v.fields as any)?.rate_per_kg_cents ?? 0;
-    return sum + (v.total_kg ?? 0) * rate;
-  }, 0);
+  // Owner is owed the TEA value (~120/kg), not the worker wage. Use the rate
+  // snapshotted on the visit, falling back to the field's tea rate.
+  const teaRateOf = (v: any) => v.tea_rate_cents ?? (v.fields as any)?.tea_rate_cents ?? 0;
 
+  const grossEarned = (visits ?? []).reduce(
+    (sum: number, v: any) => sum + (v.total_kg ?? 0) * teaRateOf(v),
+    0
+  );
+
+  // Deductions (incl. cash advances — advances are also booked as a deduction).
   const totalDeductions = (deductions ?? []).reduce(
     (s: number, d: any) => s + d.amount_cents, 0
   );
 
-  const totalPaid = (payments ?? [])
-    .filter((p: any) => p.status === "confirmed")
+  // From-pocket worker pay the owner fronted → agent reimburses (adds to owed).
+  const reimbursements = (payments ?? [])
+    .filter((p: any) => p.from_pocket)
     .reduce((s: number, p: any) => s + p.amount_cents, 0);
 
-  const netOwed = grossEarned - totalDeductions - totalPaid;
+  // Direct payments to the owner that reduce the balance — exclude advances
+  // (counted via deductions), worker pay, and from-pocket (counted above).
+  const totalPaid = (payments ?? [])
+    .filter((p: any) => !p.from_pocket && p.category !== "advance" && p.category !== "worker")
+    .reduce((s: number, p: any) => s + p.amount_cents, 0);
+
+  const netOwed = grossEarned - totalDeductions - totalPaid + reimbursements;
 
   return (
     <AppShell>
@@ -105,6 +118,12 @@ export default function BalancePage() {
               <span className="text-sm text-tea-500">Already paid</span>
               <span className="text-tea-500">- {formatLKR(totalPaid)}</span>
             </div>
+            {reimbursements > 0 && (
+              <div className="flex justify-between">
+                <span className="text-sm text-tea-500">Worker pay to reimburse</span>
+                <span className="text-green-600">+ {formatLKR(reimbursements)}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center border-t border-tea-100 pt-3">
               <span className="font-bold text-tea-900">Agent owes you</span>
               <span
@@ -124,7 +143,7 @@ export default function BalancePage() {
             </p>
             <div className="space-y-2">
               {visits.map((v: any) => {
-                const rate = (v.fields as any)?.rate_per_kg_cents ?? 0;
+                const rate = teaRateOf(v);
                 return (
                   <Card key={v.id} padded={false} className="p-3">
                     <div className="flex items-center justify-between">

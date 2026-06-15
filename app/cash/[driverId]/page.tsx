@@ -21,6 +21,9 @@ export default function DriverCashDayPage() {
   const qc = useQueryClient();
   const [broughtBackStr, setBroughtBackStr] = useState("");
   const [selectedDay, setSelectedDay] = useState(today);
+  const [crewName, setCrewName] = useState("");
+  const [crewRole, setCrewRole] = useState("loader");
+  const [crewAmtStr, setCrewAmtStr] = useState("");
 
   const { data: driver } = useQuery({
     queryKey: ["driver-info", driverId],
@@ -71,6 +74,53 @@ export default function DriverCashDayPage() {
       return data ?? [];
     },
     enabled: !!cashDay?.id,
+  });
+
+  const { data: crewPayouts } = useQuery({
+    queryKey: ["crew-payouts-day", cashDay?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("crew_payouts")
+        .select("*")
+        .eq("driver_cash_day_id", cashDay!.id)
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!cashDay?.id,
+  });
+
+  const addCrewMutation = useMutation({
+    mutationFn: async () => {
+      const amount = Math.round((parseFloat(crewAmtStr) || 0) * 100);
+      if (!crewName.trim()) throw new Error("Enter a name");
+      if (amount <= 0) throw new Error("Enter an amount");
+      if (!cashDay?.id) throw new Error("No open cash day — set a float first");
+
+      const { error } = await supabase.from("crew_payouts").insert({
+        org_id: profile!.org_id,
+        driver_id: driverId,
+        driver_cash_day_id: cashDay.id,
+        day: selectedDay,
+        name: crewName.trim(),
+        role: crewRole,
+        amount_cents: amount,
+      });
+      if (error) throw error;
+
+      // Crew pay comes out of the driver's float.
+      await supabase
+        .from("driver_cash_days")
+        .update({ paid_out_cents: cashDay.paid_out_cents + amount })
+        .eq("id", cashDay.id);
+    },
+    onSuccess: () => {
+      toast.success("Crew payment recorded");
+      setCrewName("");
+      setCrewAmtStr("");
+      qc.invalidateQueries({ queryKey: ["crew-payouts-day", cashDay?.id] });
+      qc.invalidateQueries({ queryKey: ["cash-day", driverId, selectedDay] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const reconcileMutation = useMutation({
@@ -178,6 +228,66 @@ export default function DriverCashDayPage() {
                 ))}
               </div>
             )}
+
+            {/* Crew / staff paid (loaders, lorry driver) — from float */}
+            <Card>
+              <p className="mb-3 font-semibold text-tea-900">Crew &amp; staff paid</p>
+              {(crewPayouts ?? []).length > 0 && (
+                <div className="mb-3 space-y-2">
+                  {crewPayouts!.map((c: any) => (
+                    <div key={c.id} className="flex items-center gap-3 rounded-xl bg-tea-50 px-3 py-2">
+                      <div className="flex-1">
+                        <p className="font-medium text-tea-900">{c.name}</p>
+                        <p className="text-xs capitalize text-tea-400">{c.role?.replace("_", " ")}</p>
+                      </div>
+                      <span className="font-semibold">{formatLKR(c.amount_cents)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {cashDay.status === "open" ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 rounded-xl border border-tea-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-tea-400"
+                      placeholder="Name"
+                      value={crewName}
+                      onChange={(e) => setCrewName(e.target.value)}
+                    />
+                    <select
+                      value={crewRole}
+                      onChange={(e) => setCrewRole(e.target.value)}
+                      className="rounded-xl border border-tea-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-tea-400"
+                    >
+                      <option value="loader">Loader</option>
+                      <option value="lorry_driver">Lorry driver</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 rounded-xl border border-tea-200 px-3 py-2 text-right text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-tea-400"
+                      placeholder="Amount (Rs)"
+                      inputMode="decimal"
+                      value={crewAmtStr}
+                      onChange={(e) => setCrewAmtStr(e.target.value)}
+                    />
+                    <Button
+                      onClick={() => addCrewMutation.mutate()}
+                      loading={addCrewMutation.isPending}
+                      disabled={!crewName.trim() || !crewAmtStr}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                (crewPayouts ?? []).length === 0 && (
+                  <p className="text-sm text-tea-400">No crew payments this day.</p>
+                )
+              )}
+            </Card>
 
             {/* Reconcile */}
             {cashDay.status === "open" && (

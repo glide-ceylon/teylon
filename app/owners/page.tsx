@@ -20,11 +20,11 @@ export default function OwnersPage() {
     queryKey: ["owners", profile?.org_id],
     queryFn: async () => {
       // All owners the agent manages (shadow + linked) live in their org.
+      // RLS returns owners this agent has adopted (scanned/created/collected).
       const { data } = await supabase
         .from("profiles")
         .select("id, full_name, phone, is_shadow")
         .eq("role", "owner")
-        .eq("org_id", profile!.org_id)
         .order("full_name");
       return data ?? [];
     },

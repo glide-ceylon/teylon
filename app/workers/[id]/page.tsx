@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
@@ -7,15 +8,19 @@ import { useProfile } from "@/lib/hooks/useProfile";
 import { AppShell, PageHeader } from "@/components/AppShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { formatLKR } from "@/lib/money";
-import { CheckCircle } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function WorkerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: profile } = useProfile();
   const qc = useQueryClient();
+  const isOwner = profile?.role === "owner";
+
+  const [amountStr, setAmountStr] = useState("");
+  const [fromPocket, setFromPocket] = useState(false);
 
   const { data: worker } = useQuery({
     queryKey: ["worker", id],
@@ -32,7 +37,6 @@ export default function WorkerDetailPage() {
   const { data: payData } = useQuery({
     queryKey: ["worker-pay", id],
     queryFn: async () => {
-      // Sum kg from collection lines
       const { data } = await supabase
         .from("collection_lines")
         .select("kg, collection_visits(collected_at, owner_confirmed)")
@@ -47,22 +51,34 @@ export default function WorkerDetailPage() {
       const { data } = await supabase
         .from("payments")
         .select("*")
-        .eq("payee_id", id)
+        .eq("worker_id", id)
         .order("paid_at", { ascending: false });
       return data ?? [];
     },
   });
 
-  const markPaidMutation = useMutation({
-    mutationFn: async (paymentId: string) => {
-      const { error } = await supabase
-        .from("payments")
-        .update({ status: "confirmed" })
-        .eq("id", paymentId);
+  const payMutation = useMutation({
+    mutationFn: async () => {
+      const amount = Math.round((parseFloat(amountStr) || 0) * 100);
+      if (amount <= 0) throw new Error("Enter an amount");
+      const { data, error } = await supabase.functions.invoke("record-payment", {
+        body: {
+          owner_id: (worker as any).owner_id,
+          worker_id: id,
+          amount_cents: amount,
+          mode: "instant",
+          category: "worker",
+          from_pocket: fromPocket,
+          disbursed_by: profile!.id,
+        },
+      });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
     },
     onSuccess: () => {
-      toast.success("Marked as paid");
+      toast.success("Worker payment recorded");
+      setAmountStr("");
+      setFromPocket(false);
       qc.invalidateQueries({ queryKey: ["worker-payments", id] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -73,17 +89,15 @@ export default function WorkerDetailPage() {
   const field = worker.fields as any;
   const ratePerKg = field?.rate_per_kg_cents ?? 0;
   const lunch = field?.lunch_allowance_cents ?? 0;
+  const bonus = (worker as any).bonus_cents ?? 0;
 
   const confirmedLines = (payData ?? []).filter(
     (l: any) => l.collection_visits?.owner_confirmed
   );
   const totalKg = confirmedLines.reduce((s: number, l: any) => s + l.kg, 0);
-  const grossPay = totalKg * ratePerKg + confirmedLines.length * lunch;
+  const grossPay = Math.round(totalKg * ratePerKg) + confirmedLines.length * lunch + bonus;
 
-  const totalPaid = (payments ?? [])
-    .filter((p: any) => p.status === "confirmed")
-    .reduce((s: number, p: any) => s + p.amount_cents, 0);
-
+  const totalPaid = (payments ?? []).reduce((s: number, p: any) => s + p.amount_cents, 0);
   const owedCents = grossPay - totalPaid;
 
   return (
@@ -99,13 +113,19 @@ export default function WorkerDetailPage() {
               <span className="font-semibold text-tea-900">{totalKg.toFixed(1)} kg</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-tea-500">Rate</span>
+              <span className="text-sm text-tea-500">Wage rate</span>
               <span className="text-tea-900">{formatLKR(ratePerKg)} / kg</span>
             </div>
             {lunch > 0 && (
               <div className="flex justify-between">
                 <span className="text-sm text-tea-500">Lunch allowance</span>
                 <span className="text-tea-900">{formatLKR(lunch)} × {confirmedLines.length} days</span>
+              </div>
+            )}
+            {bonus > 0 && (
+              <div className="flex justify-between">
+                <span className="text-sm text-tea-500">Bonus</span>
+                <span className="text-tea-900">{formatLKR(bonus)}</span>
               </div>
             )}
             <div className="flex justify-between border-t border-tea-100 pt-3">
@@ -118,14 +138,43 @@ export default function WorkerDetailPage() {
             </div>
             <div className="flex justify-between border-t border-tea-100 pt-3">
               <span className="font-semibold text-tea-700">Owed to worker</span>
-              <span
-                className={`text-xl font-bold ${owedCents > 0 ? "text-amber-600" : "text-green-600"}`}
-              >
+              <span className={`text-xl font-bold ${owedCents > 0 ? "text-amber-600" : "text-green-600"}`}>
                 {formatLKR(owedCents)}
               </span>
             </div>
           </div>
         </Card>
+
+        {/* Pay worker — owner only */}
+        {isOwner && (
+          <Card className="space-y-3">
+            <p className="font-semibold text-tea-900">Pay worker</p>
+            <Input
+              label="Amount (Rs)"
+              placeholder={owedCents > 0 ? (owedCents / 100).toString() : "0"}
+              value={amountStr}
+              onChange={(e) => setAmountStr(e.target.value)}
+              inputMode="decimal"
+            />
+            <label className="flex items-center gap-2 text-sm text-tea-700">
+              <input
+                type="checkbox"
+                checked={fromPocket}
+                onChange={(e) => setFromPocket(e.target.checked)}
+                className="h-4 w-4 rounded border-tea-300"
+              />
+              I paid from my own pocket (reimburse me at settlement)
+            </label>
+            <Button
+              fullWidth
+              onClick={() => payMutation.mutate()}
+              loading={payMutation.isPending}
+              disabled={!amountStr}
+            >
+              Record payment
+            </Button>
+          </Card>
+        )}
 
         {/* Payment history */}
         {payments && payments.length > 0 && (
@@ -142,19 +191,7 @@ export default function WorkerDetailPage() {
                       {new Date(p.paid_at).toLocaleDateString("en-LK")}
                     </p>
                   </div>
-                  {p.status === "confirmed" ? (
-                    <Badge variant="green">Paid</Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => markPaidMutation.mutate(p.id)}
-                      loading={markPaidMutation.isPending}
-                    >
-                      <CheckCircle className="h-3 w-3" />
-                      Mark paid
-                    </Button>
-                  )}
+                  {p.from_pocket && <Badge variant="amber">From pocket</Badge>}
                 </Card>
               ))}
             </div>

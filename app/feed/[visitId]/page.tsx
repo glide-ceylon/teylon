@@ -27,8 +27,8 @@ export default function VisitDetailPage() {
       const { data } = await supabase
         .from("collection_visits")
         .select(`
-          id, collected_at, total_kg, owner_confirmed, escalated, escalation_note, status,
-          fields(id, name, rate_per_kg_cents, lunch_allowance_cents),
+          id, collected_at, total_kg, owner_confirmed, escalated, escalation_note, status, tea_rate_cents,
+          fields(id, name, rate_per_kg_cents, lunch_allowance_cents, tea_rate_cents),
           drivers(lorry_identifier, profiles(full_name)),
           collection_lines(id, kg, workers(id, name))
         `)
@@ -88,8 +88,9 @@ export default function VisitDetailPage() {
   const field = visit.fields as any;
   const driver = visit.drivers as any;
   const lines = (visit.collection_lines as any[]) ?? [];
-  const estimatedPay =
-    (visit.total_kg ?? 0) * (field?.rate_per_kg_cents ?? 0);
+  // The owner earns the TEA value (agent→owner), not the worker wage.
+  const teaRate = (visit as any).tea_rate_cents ?? field?.tea_rate_cents ?? 0;
+  const estimatedPay = (visit.total_kg ?? 0) * teaRate;
 
   return (
     <AppShell>
@@ -123,9 +124,9 @@ export default function VisitDetailPage() {
               <span className="font-bold text-tea-900">{visit.total_kg?.toFixed(1)} kg</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-tea-500">Rate</span>
+              <span className="text-sm text-tea-500">Tea rate</span>
               <span className="font-semibold text-tea-900">
-                {formatLKR(field?.rate_per_kg_cents ?? 0)} / kg
+                {formatLKR(teaRate)} / kg
               </span>
             </div>
             <div className="flex justify-between border-t border-tea-100 pt-3">

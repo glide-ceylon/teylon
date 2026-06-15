@@ -39,7 +39,7 @@ export default function OwnerDetailPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("collection_visits")
-        .select("id, collected_at, total_kg, owner_confirmed, escalated, fields(name, rate_per_kg_cents)")
+        .select("id, collected_at, total_kg, owner_confirmed, escalated, pay_mode, tea_rate_cents, fields(name, tea_rate_cents)")
         .eq("owner_id", id)
         .eq("org_id", profile!.org_id)
         .order("collected_at", { ascending: false })
@@ -76,15 +76,20 @@ export default function OwnerDetailPage() {
   });
 
   const confirmedVisits = (visits ?? []).filter((v: any) => v.owner_confirmed);
-  const grossEarned = confirmedVisits.reduce((s: number, v: any) => {
-    const rate = (v.fields as any)?.rate_per_kg_cents ?? 0;
-    return s + (v.total_kg ?? 0) * rate;
-  }, 0);
+  // Owner is owed the TEA value (~120/kg) on monthly visits (instant are paid on
+  // the spot). Use the visit's snapshot rate, falling back to the field's.
+  const teaRateOf = (v: any) => v.tea_rate_cents ?? (v.fields as any)?.tea_rate_cents ?? 0;
+  const grossEarned = confirmedVisits
+    .filter((v: any) => v.pay_mode !== "instant")
+    .reduce((s: number, v: any) => s + (v.total_kg ?? 0) * teaRateOf(v), 0);
   const totalDeductions = (deductions ?? []).reduce((s: number, d: any) => s + d.amount_cents, 0);
-  const totalPaid = (payments ?? [])
-    .filter((p: any) => p.status === "confirmed")
+  const reimbursements = (payments ?? [])
+    .filter((p: any) => p.from_pocket)
     .reduce((s: number, p: any) => s + p.amount_cents, 0);
-  const netOwed = grossEarned - totalDeductions - totalPaid;
+  const totalPaid = (payments ?? [])
+    .filter((p: any) => !p.from_pocket && p.category !== "advance" && p.category !== "worker")
+    .reduce((s: number, p: any) => s + p.amount_cents, 0);
+  const netOwed = grossEarned - totalDeductions - totalPaid + reimbursements;
 
   const recordPaymentMutation = useMutation({
     mutationFn: async () => {

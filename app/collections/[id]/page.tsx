@@ -18,8 +18,8 @@ export default function CollectionDetailPage() {
       const { data } = await supabase
         .from("collection_visits")
         .select(`
-          id, collected_at, total_kg, owner_confirmed, escalated, escalation_note, status,
-          fields(name, rate_per_kg_cents),
+          id, collected_at, total_kg, owner_confirmed, escalated, escalation_note, status, tea_rate_cents,
+          fields(name, rate_per_kg_cents, tea_rate_cents),
           profiles!collection_visits_owner_id_fkey(full_name, phone),
           drivers(lorry_identifier, profiles(full_name)),
           collection_lines(id, kg, workers(id, name))
@@ -79,13 +79,15 @@ export default function CollectionDetailPage() {
               <span className="font-bold text-tea-900">{visit.total_kg?.toFixed(1)} kg</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-tea-500">Rate</span>
-              <span className="text-tea-900">{formatLKR(field?.rate_per_kg_cents ?? 0)}/kg</span>
+              <span className="text-sm text-tea-500">Tea rate</span>
+              <span className="text-tea-900">
+                {formatLKR((visit as any).tea_rate_cents ?? field?.tea_rate_cents ?? 0)}/kg
+              </span>
             </div>
             <div className="flex justify-between border-t border-tea-100 pt-3">
               <span className="font-semibold text-tea-700">Est. owner payment</span>
               <span className="font-bold text-tea-900">
-                {formatLKR((visit.total_kg ?? 0) * (field?.rate_per_kg_cents ?? 0))}
+                {formatLKR((visit.total_kg ?? 0) * ((visit as any).tea_rate_cents ?? field?.tea_rate_cents ?? 0))}
               </span>
             </div>
           </div>

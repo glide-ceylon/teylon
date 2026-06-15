@@ -15,6 +15,7 @@ import {
   ChevronRight,
   User,
   Truck,
+  Settings,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -118,6 +119,18 @@ export default function AccountPage() {
                   <div className="flex-1">
                     <p className="font-medium text-tea-900">Vehicles</p>
                     <p className="text-sm text-tea-400">Lorries and their QR codes</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-tea-300" />
+                </div>
+              </Card>
+            </Link>
+            <Link href="/settings">
+              <Card>
+                <div className="flex items-center gap-3">
+                  <Settings className="h-5 w-5 text-tea-500" />
+                  <div className="flex-1">
+                    <p className="font-medium text-tea-900">Settings</p>
+                    <p className="text-sm text-tea-400">Tea rate and defaults</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-tea-300" />
                 </div>

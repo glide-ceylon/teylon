@@ -84,6 +84,14 @@ serve(async (req) => {
 
     if (profileError) throw profileError;
 
+    // Link the owner to the agent's org (shows in owner lists).
+    await adminClient
+      .from("agent_owners")
+      .upsert(
+        { org_id: callerProfile.org_id, owner_id: ownerUserId },
+        { onConflict: "org_id,owner_id" }
+      );
+
     // Optionally create a field
     let fieldId: string | null = null;
     if (field_name) {
