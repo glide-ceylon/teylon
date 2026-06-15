@@ -52,14 +52,30 @@ serve(async (req) => {
 
     const { data: fields } = await adminClient
       .from("fields")
-      .select("id, name, rate_per_kg_cents")
+      .select("id, name, rate_per_kg_cents, tea_rate_cents")
       .eq("owner_id", owner_id)
       .order("name");
+
+    // Owner's default pay mode (driver prefills, may override per collection).
+    const { data: ownerSettings } = await adminClient
+      .from("profiles")
+      .select("pay_mode")
+      .eq("id", owner_id)
+      .single();
+
+    // Org default tea rate — fallback when a field has no override.
+    const { data: org } = await adminClient
+      .from("orgs")
+      .select("default_tea_rate_cents")
+      .eq("id", callerProfile.org_id)
+      .single();
 
     return new Response(
       JSON.stringify({
         id: owner.id,
         full_name: owner.full_name,
+        pay_mode: ownerSettings?.pay_mode ?? "monthly",
+        default_tea_rate_cents: org?.default_tea_rate_cents ?? 0,
         fields: fields ?? [],
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

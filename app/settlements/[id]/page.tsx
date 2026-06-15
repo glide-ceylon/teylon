@@ -87,6 +87,12 @@ export default function SettlementDetailPage() {
               <span className="text-sm text-tea-500">Deductions</span>
               <span className="text-red-600">- {formatLKR(settlement.deductions_cents)}</span>
             </div>
+            {settlement.reimbursements_cents > 0 && (
+              <div className="flex justify-between">
+                <span className="text-sm text-tea-500">Worker pay reimbursed</span>
+                <span className="text-green-600">+ {formatLKR(settlement.reimbursements_cents)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-tea-100 pt-3">
               <span className="font-bold text-tea-900">Net payout</span>
               <span className="text-2xl font-bold text-tea-700">

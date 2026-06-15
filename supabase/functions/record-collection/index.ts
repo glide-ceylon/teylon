@@ -44,6 +44,11 @@ serve(async (req) => {
     // Accept both `pluckers` and the older `lines` key.
     const pluckers: PluckerLine[] = body.pluckers ?? body.lines ?? [];
     let owner_id: string | undefined = body.owner_id;
+    // Tea rate (agent->owner). If the caller supplies one it's an override.
+    const teaRateInput: number | null =
+      body.tea_rate_cents != null ? Number(body.tea_rate_cents) : null;
+    const payModeInput: string | null = body.pay_mode ?? null;
+    const advanceCents: number = body.advance_cents ? Number(body.advance_cents) : 0;
 
     if (!field_id || !pluckers.length) {
       throw new Error("field_id and at least one plucker line are required");
@@ -54,16 +59,35 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Derive owner from the field when the caller didn't supply it.
-    if (!owner_id) {
-      const { data: field, error: fieldErr } = await adminClient
-        .from("fields")
-        .select("owner_id")
-        .eq("id", field_id)
-        .single();
-      if (fieldErr || !field) throw new Error("Field not found");
-      owner_id = field.owner_id;
+    // Load field + owner + org defaults to resolve owner, tea rate, pay mode.
+    const { data: field, error: fieldErr } = await adminClient
+      .from("fields")
+      .select("owner_id, tea_rate_cents, profiles!fields_owner_id_fkey(pay_mode)")
+      .eq("id", field_id)
+      .single();
+    if (fieldErr || !field) throw new Error("Field not found");
+    if (!owner_id) owner_id = field.owner_id;
+
+    // Tea rate precedence: explicit override → field rate → org default.
+    let teaRateCents = teaRateInput;
+    let teaRateOverriddenBy: string | null = null;
+    if (teaRateCents != null) {
+      teaRateOverriddenBy = user.id; // driver/agent set it explicitly → audit
+    } else {
+      teaRateCents = field.tea_rate_cents ?? null;
+      if (teaRateCents == null) {
+        const { data: org } = await adminClient
+          .from("orgs")
+          .select("default_tea_rate_cents")
+          .eq("id", callerProfile.org_id)
+          .single();
+        teaRateCents = org?.default_tea_rate_cents ?? 0;
+      }
     }
+
+    // Pay mode: explicit choice → owner default → monthly.
+    const payMode =
+      payModeInput ?? (field.profiles as any)?.pay_mode ?? "monthly";
 
     // Stamp the driver's current vehicle onto the visit (soft link, for history).
     let vehicle_id: string | null = null;
@@ -116,6 +140,9 @@ serve(async (req) => {
         org_id: callerProfile.org_id,
         total_kg: totalKg,
         vehicle_id,
+        tea_rate_cents: teaRateCents,
+        tea_rate_overridden_by: teaRateOverriddenBy,
+        pay_mode: payMode,
         note: note ?? null,
         owner_confirmed: false,
         escalated: false,
@@ -138,8 +165,57 @@ serve(async (req) => {
       if (linesError) throw linesError;
     }
 
+    // Optional cash advance the owner takes on the spot (from driver float).
+    if (advanceCents > 0) {
+      // Running-tab deduction against the owner (drawn down at settlement).
+      await adminClient.from("deductions").insert({
+        owner_id,
+        org_id: callerProfile.org_id,
+        type: "advance",
+        amount_cents: advanceCents,
+        note: "Cash advance at collection",
+      });
+
+      // Attach to the driver's open cash day so it counts against the float.
+      let cashDayId: string | null = null;
+      if (driver_id) {
+        const today = new Date().toISOString().split("T")[0];
+        const { data: cd } = await adminClient
+          .from("driver_cash_days")
+          .select("id, paid_out_cents")
+          .eq("driver_id", driver_id)
+          .eq("day", today)
+          .maybeSingle();
+        if (cd) {
+          cashDayId = cd.id;
+          await adminClient
+            .from("driver_cash_days")
+            .update({ paid_out_cents: cd.paid_out_cents + advanceCents })
+            .eq("id", cd.id);
+        }
+      }
+
+      await adminClient.from("payments").insert({
+        org_id: callerProfile.org_id,
+        charged_to: owner_id,
+        disbursed_by: user.id,
+        driver_id: driver_id,
+        driver_cash_day_id: cashDayId,
+        visit_id: visit.id,
+        amount_cents: advanceCents,
+        mode: "instant",
+        category: "advance",
+        note: "Cash advance at collection",
+      });
+    }
+
     return new Response(
-      JSON.stringify({ visit_id: visit.id, total_kg: totalKg }),
+      JSON.stringify({
+        visit_id: visit.id,
+        total_kg: totalKg,
+        tea_rate_cents: teaRateCents,
+        pay_mode: payMode,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

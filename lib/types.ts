@@ -3,6 +3,7 @@ export type Role = "owner" | "agent" | "driver" | "worker" | "factory";
 export interface Org {
   id: string;
   name: string;
+  default_tea_rate_cents: number;
   created_at: string;
 }
 
@@ -14,6 +15,7 @@ export interface Profile {
   org_id: string | null;
   qr_code: string | null;
   is_shadow: boolean;
+  pay_mode: "instant" | "monthly";
   created_by: string | null;
   created_at: string;
 }
@@ -24,7 +26,8 @@ export interface Field {
   name: string;
   location: string | null;
   acreage: number | null;
-  rate_per_kg_cents: number;
+  rate_per_kg_cents: number; // WORKER wage rate (~40/kg, area floor)
+  tea_rate_cents: number | null; // per-field TEA rate override (agent->owner)
   lunch_allowance_cents: number;
   bonus_rule: Record<string, unknown> | null;
   created_at: string;
@@ -86,6 +89,9 @@ export interface CollectionVisit {
   collected_at: string;
   total_kg: number | null;
   vehicle_id: string | null;
+  tea_rate_cents: number | null;
+  tea_rate_overridden_by: string | null;
+  pay_mode: "instant" | "monthly" | null;
   note: string | null;
   status: "collected" | "priced" | "settled";
   owner_confirmed: boolean;
@@ -137,9 +143,25 @@ export interface Payment {
   driver_id: string | null;
   driver_cash_day_id: string | null;
   visit_id: string | null;
+  from_pocket: boolean;
+  category: string | null; // 'worker' | 'advance' | 'tea' | 'crew'
+  worker_id: string | null;
   note: string | null;
   status: "recorded" | "confirmed";
   paid_at: string;
+}
+
+export interface CrewPayout {
+  id: string;
+  org_id: string;
+  driver_id: string | null;
+  driver_cash_day_id: string | null;
+  day: string;
+  name: string;
+  role: string | null; // 'loader' | 'lorry_driver' | other
+  amount_cents: number;
+  note: string | null;
+  created_at: string;
 }
 
 export interface Settlement {
@@ -153,6 +175,7 @@ export interface Settlement {
   loss_adjustment_pct: number;
   gross_cents: number;
   deductions_cents: number;
+  reimbursements_cents: number;
   net_cents: number;
   computed_at: string;
 }

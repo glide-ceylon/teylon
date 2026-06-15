@@ -53,11 +53,13 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get confirmed visits for this owner in period
+    // Get confirmed, MONTHLY visits for this owner in period. Instant-paid
+    // collections are settled on the spot, so they don't belong in the average.
     const { data: visits, error: visitsError } = await adminClient
       .from("collection_visits")
-      .select("total_kg, fields(rate_per_kg_cents)")
+      .select("total_kg, tea_rate_cents, fields(tea_rate_cents)")
       .eq("owner_id", owner_id)
+      .neq("pay_mode", "instant")
       .eq("org_id", org_id)
       .eq("owner_confirmed", true)
       .gte("collected_at", period_start + "T00:00:00")
@@ -74,7 +76,8 @@ serve(async (req) => {
 
     for (const v of visits) {
       const kg = v.total_kg ?? 0;
-      const rate = (v.fields as any)?.rate_per_kg_cents ?? 4000;
+      // Use the tea rate applied at collection; fall back to the field's tea rate.
+      const rate = (v as any).tea_rate_cents ?? (v.fields as any)?.tea_rate_cents ?? 0;
       totalKg += kg;
       weightedRateSum += kg * rate;
     }
@@ -99,7 +102,22 @@ serve(async (req) => {
       0
     );
 
-    const netCents = grossCents - totalDeductions;
+    // Owner-fronted worker pay to reimburse this period (paid from owner's pocket).
+    const { data: reimbursements } = await adminClient
+      .from("payments")
+      .select("amount_cents")
+      .eq("charged_to", owner_id)
+      .eq("org_id", org_id)
+      .eq("from_pocket", true)
+      .gte("paid_at", period_start + "T00:00:00")
+      .lte("paid_at", period_end + "T23:59:59");
+
+    const totalReimbursements = (reimbursements ?? []).reduce(
+      (s: number, p: any) => s + p.amount_cents,
+      0
+    );
+
+    const netCents = grossCents - totalDeductions + totalReimbursements;
 
     // Store settlement
     const { data: settlement, error: settlementError } = await adminClient
@@ -114,6 +132,7 @@ serve(async (req) => {
         loss_adjustment_pct: loss_adjustment_pct,
         gross_cents: grossCents,
         deductions_cents: totalDeductions,
+        reimbursements_cents: totalReimbursements,
         net_cents: netCents,
         computed_at: new Date().toISOString(),
       })
@@ -129,6 +148,7 @@ serve(async (req) => {
         avg_rate_cents: adjustedAvgRate,
         gross_cents: grossCents,
         deductions_cents: totalDeductions,
+        reimbursements_cents: totalReimbursements,
         net_cents: netCents,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

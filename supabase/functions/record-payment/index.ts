@@ -26,8 +26,8 @@ serve(async (req) => {
       .eq("id", user.id)
       .single();
 
-    if (!callerProfile || !["agent", "driver"].includes(callerProfile.role)) {
-      throw new Error("Only agents and drivers can record payments");
+    if (!callerProfile || !["agent", "driver", "owner"].includes(callerProfile.role)) {
+      throw new Error("You are not allowed to record payments");
     }
 
     const {
@@ -36,6 +36,10 @@ serve(async (req) => {
       mode,
       driver_id,
       driver_cash_day_id,
+      worker_id,
+      category,
+      from_pocket,
+      disbursed_by,
       note,
     }: {
       owner_id: string;
@@ -43,6 +47,10 @@ serve(async (req) => {
       mode: "instant" | "monthly";
       driver_id?: string;
       driver_cash_day_id?: string;
+      worker_id?: string;
+      category?: string;
+      from_pocket?: boolean;
+      disbursed_by?: string;
       note?: string;
     } = await req.json();
 
@@ -57,15 +65,19 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Insert payment record
+    // Insert payment record. `disbursed_by` defaults to the caller, but an owner
+    // paying a worker from their own pocket is recorded with from_pocket=true.
     const { data: payment, error: paymentError } = await adminClient
       .from("payments")
       .insert({
         org_id: callerProfile.org_id,
         charged_to: owner_id,
-        disbursed_by: user.id,
+        disbursed_by: disbursed_by ?? user.id,
         driver_id: driver_id ?? null,
         driver_cash_day_id: driver_cash_day_id ?? null,
+        worker_id: worker_id ?? null,
+        category: category ?? null,
+        from_pocket: from_pocket ?? false,
         amount_cents: amount_cents,
         mode: mode,
         note: note ?? null,
