@@ -1,33 +1,104 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { AppShell, PageHeader } from "@/components/AppShell";
+import { QRScanner } from "@/components/QRScanner";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { formatLKR } from "@/lib/money";
-import { Truck, Plus } from "lucide-react";
+import { Truck, Plus, Camera } from "lucide-react";
+import toast from "react-hot-toast";
 
 const today = new Date().toISOString().split("T")[0];
 
 export default function DriverTodayPage() {
   const { data: profile } = useProfile();
+  const qc = useQueryClient();
+  const [showScanner, setShowScanner] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   const { data: myDriver } = useQuery({
-    queryKey: ["my-driver", profile?.id],
+    queryKey: ["my-driver-today", profile?.id],
     queryFn: async () => {
       const { data } = await supabase
         .from("drivers")
-        .select("id, lorry_identifier")
+        .select("id, current_vehicle_id, vehicles(id, identifier, details)")
         .eq("profile_id", profile!.id)
         .single();
       return data;
     },
     enabled: !!profile?.id,
   });
+
+  const { data: vehicles } = useQuery({
+    queryKey: ["vehicles", profile?.org_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("vehicles")
+        .select("id, identifier, details")
+        .eq("org_id", profile!.org_id)
+        .order("identifier");
+      return data ?? [];
+    },
+    enabled: !!profile?.org_id && showPicker,
+  });
+
+  const setVehicle = useMutation({
+    mutationFn: async (vehicleId: string) => {
+      if (!myDriver?.id) throw new Error("Driver record not found");
+      // Update the current ("active") vehicle on the driver…
+      const { error } = await supabase
+        .from("drivers")
+        .update({ current_vehicle_id: vehicleId })
+        .eq("id", myDriver.id);
+      if (error) throw error;
+
+      // …and log it on today's day record so we keep a per-day history of
+      // which lorry was driven (created if today's row doesn't exist yet).
+      const { error: dayError } = await supabase
+        .from("driver_cash_days")
+        .upsert(
+          { driver_id: myDriver.id, day: today, vehicle_id: vehicleId },
+          { onConflict: "driver_id,day" }
+        );
+      if (dayError) throw dayError;
+    },
+    onSuccess: () => {
+      toast.success("Vehicle linked");
+      setShowScanner(false);
+      setShowPicker(false);
+      qc.invalidateQueries({ queryKey: ["my-driver-today"] });
+      qc.invalidateQueries({ queryKey: ["my-cash-day"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Deep link / scanned QR: /today?vehicle=<id>
+  useEffect(() => {
+    const vehicleId = new URLSearchParams(window.location.search).get("vehicle");
+    if (vehicleId && myDriver?.id && myDriver.current_vehicle_id !== vehicleId) {
+      setVehicle.mutate(vehicleId);
+      window.history.replaceState({}, "", "/today");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myDriver?.id]);
+
+  function handleScan(result: string) {
+    const match = result.match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    );
+    if (!match) {
+      toast.error("Not a valid vehicle QR");
+      setShowScanner(false);
+      return;
+    }
+    setVehicle.mutate(match[0]);
+  }
 
   const { data: cashDay } = useQuery({
     queryKey: ["my-cash-day", myDriver?.id],
@@ -58,18 +129,18 @@ export default function DriverTodayPage() {
     enabled: !!myDriver?.id,
   });
 
-  const totalKgToday = (todayVisits ?? []).reduce(
-    (s: number, v: any) => s + (v.total_kg ?? 0), 0
-  );
-
-  const cashRemaining = cashDay
-    ? cashDay.float_out_cents - cashDay.paid_out_cents
-    : null;
+  const totalKgToday = (todayVisits ?? []).reduce((s: number, v: any) => s + (v.total_kg ?? 0), 0);
+  const cashRemaining = cashDay ? cashDay.float_out_cents - cashDay.paid_out_cents : null;
+  const currentVehicle = (myDriver as any)?.vehicles;
 
   return (
     <AppShell>
+      {showScanner && (
+        <QRScanner onResult={handleScan} onClose={() => setShowScanner(false)} />
+      )}
+
       <PageHeader
-        title={`Today`}
+        title="Today"
         subtitle={new Date().toLocaleDateString("en-LK", {
           weekday: "long",
           day: "numeric",
@@ -78,10 +149,58 @@ export default function DriverTodayPage() {
       />
 
       <div className="mx-auto w-full max-w-md px-4 pb-32 space-y-4">
-        {/* Lorry ID */}
-        {myDriver && (
-          <p className="text-sm text-tea-400">Lorry: {myDriver.lorry_identifier}</p>
-        )}
+        {/* Vehicle card */}
+        <Card className={currentVehicle ? "" : "border-amber-200 bg-amber-50"}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-tea-100">
+              <Truck className="h-5 w-5 text-tea-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              {currentVehicle ? (
+                <>
+                  <p className="text-xs uppercase tracking-widest text-tea-400">Your vehicle</p>
+                  <p className="font-semibold text-tea-900">{currentVehicle.identifier}</p>
+                  {currentVehicle.details && (
+                    <p className="text-xs text-tea-400">{currentVehicle.details}</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-amber-800">No vehicle linked</p>
+                  <p className="text-sm text-amber-600">Scan or choose your lorry for today</p>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" variant="secondary" className="flex-1" onClick={() => setShowScanner(true)}>
+              <Camera className="h-4 w-4" />
+              Scan vehicle
+            </Button>
+            <Button size="sm" variant="secondary" className="flex-1" onClick={() => setShowPicker((s) => !s)}>
+              {currentVehicle ? "Change" : "Choose"}
+            </Button>
+          </div>
+
+          {/* Vehicle picker */}
+          {showPicker && (
+            <div className="mt-3 space-y-1 border-t border-tea-100 pt-3">
+              {(vehicles ?? []).length === 0 && (
+                <p className="text-sm text-tea-400">No vehicles set up yet — ask your agent.</p>
+              )}
+              {vehicles?.map((v: any) => (
+                <button
+                  key={v.id}
+                  onClick={() => setVehicle.mutate(v.id)}
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-tea-50"
+                >
+                  <span className="text-tea-900">{v.identifier}</span>
+                  {myDriver?.current_vehicle_id === v.id && <Badge variant="green">Current</Badge>}
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
 
         {/* Cash float card */}
         {cashDay ? (

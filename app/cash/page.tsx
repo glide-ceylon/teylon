@@ -52,7 +52,7 @@ export default function CashPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("driver_cash_days")
-        .select("*, drivers!inner(id, lorry_identifier, org_id, profiles(full_name))")
+        .select("*, vehicles(identifier), drivers!inner(id, org_id, profiles(full_name))")
         .eq("drivers.org_id", profile!.org_id)
         .eq("day", today);
       return data ?? [];
@@ -65,7 +65,7 @@ export default function CashPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("drivers")
-        .select("id, lorry_identifier, profiles(full_name)")
+        .select("id, profiles(full_name, phone), vehicles(identifier)")
         .eq("org_id", profile!.org_id);
       return data ?? [];
     },
@@ -128,7 +128,8 @@ export default function CashPage() {
                   <option value="">— Select driver —</option>
                   {drivers?.map((d: any) => (
                     <option key={d.id} value={d.id}>
-                      {(d.profiles as any)?.full_name ?? "Driver"} — {d.lorry_identifier}
+                      {(d.profiles as any)?.full_name ?? "Driver"}
+                      {(d.profiles as any)?.phone ? ` — ${(d.profiles as any).phone}` : ""}
                     </option>
                   ))}
                 </select>
@@ -192,7 +193,9 @@ export default function CashPage() {
                           <p className="text-sm text-tea-500">
                             Float: {formatLKR(cd.float_out_cents)} · Paid: {formatLKR(cd.paid_out_cents)} · Left: {formatLKR(remaining)}
                           </p>
-                          <p className="text-xs text-tea-400">{d?.lorry_identifier}</p>
+                          {(cd.vehicles as any)?.identifier && (
+                            <p className="text-xs text-tea-400">{(cd.vehicles as any).identifier}</p>
+                          )}
                         </div>
                         <ArrowRight className="h-4 w-4 flex-shrink-0 text-tea-300" />
                       </div>
@@ -217,7 +220,9 @@ export default function CashPage() {
                     <p className="font-medium text-tea-900">
                       {(d.profiles as any)?.full_name ?? "Driver"}
                     </p>
-                    <p className="text-xs text-tea-400">{d.lorry_identifier}</p>
+                    {(d.vehicles as any)?.identifier && (
+                      <p className="text-xs text-tea-400">{(d.vehicles as any).identifier}</p>
+                    )}
                   </div>
                   <Button
                     size="sm"

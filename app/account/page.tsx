@@ -102,10 +102,22 @@ export default function AccountPage() {
             <Link href="/drivers">
               <Card>
                 <div className="flex items-center gap-3">
-                  <Truck className="h-5 w-5 text-tea-500" />
+                  <User className="h-5 w-5 text-tea-500" />
                   <div className="flex-1">
                     <p className="font-medium text-tea-900">Drivers</p>
-                    <p className="text-sm text-tea-400">Manage your drivers and lorries</p>
+                    <p className="text-sm text-tea-400">Manage driver accounts</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-tea-300" />
+                </div>
+              </Card>
+            </Link>
+            <Link href="/vehicles">
+              <Card>
+                <div className="flex items-center gap-3">
+                  <Truck className="h-5 w-5 text-tea-500" />
+                  <div className="flex-1">
+                    <p className="font-medium text-tea-900">Vehicles</p>
+                    <p className="text-sm text-tea-400">Lorries and their QR codes</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-tea-300" />
                 </div>

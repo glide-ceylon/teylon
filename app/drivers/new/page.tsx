@@ -23,8 +23,7 @@ export default function NewDriverPage() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [lorryId, setLorryId] = useState("");
-  const [vehicle, setVehicle] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState(suggestPassword);
 
   // After success, show the credentials the agent must hand to the driver.
@@ -38,9 +37,8 @@ export default function NewDriverPage() {
         body: {
           name,
           phone,
+          email: email || null,
           password,
-          lorry_identifier: lorryId,
-          vehicle_details: vehicle || null,
           org_id: profile!.org_id,
         },
       });
@@ -76,8 +74,8 @@ export default function NewDriverPage() {
             </div>
             <p className="font-semibold text-tea-900">{name} can now log in</p>
             <p className="text-sm text-tea-500">
-              Share these login details with the driver. They sign in on the
-              <strong> Phone</strong> tab using <strong>“Use password”</strong>.
+              Share these with the driver. They sign in with their phone (or email)
+              and this password — no code needed. They pick their vehicle after logging in.
             </p>
           </Card>
 
@@ -104,8 +102,7 @@ export default function NewDriverPage() {
 
           <Card className="bg-amber-50 border-amber-200">
             <p className="text-sm text-amber-700">
-              Save this password now — it won&apos;t be shown again. The driver can
-              keep using it, or change it later.
+              Save this password now — it won&apos;t be shown again.
             </p>
           </Card>
 
@@ -124,9 +121,9 @@ export default function NewDriverPage() {
       <div className="px-4 md:px-6 pb-8 max-w-lg space-y-4">
         <Card className="bg-tea-50 border-tea-200">
           <p className="text-sm text-tea-600">
-            This creates a login for the driver. They sign in with their{" "}
-            <strong>phone number + password</strong> — no SMS code needed. You&apos;ll
-            get the credentials to hand over on the next screen.
+            This creates a login for the driver — the person, not a vehicle. They sign
+            in with their <strong>phone (or email) + password</strong>, then scan or pick
+            a vehicle when they start a trip.
           </p>
         </Card>
 
@@ -145,6 +142,15 @@ export default function NewDriverPage() {
           inputMode="tel"
           hint="Must be E.164 format with country code"
         />
+        <Input
+          label="Email (optional)"
+          placeholder="driver@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          inputMode="email"
+          type="email"
+          hint="Lets the driver also sign in with email"
+        />
         <div className="flex items-end gap-2">
           <div className="flex-1">
             <Input
@@ -158,26 +164,13 @@ export default function NewDriverPage() {
             New
           </Button>
         </div>
-        <Input
-          label="Lorry / vehicle identifier *"
-          placeholder="e.g. WP-1234 or Lorry 3"
-          value={lorryId}
-          onChange={(e) => setLorryId(e.target.value)}
-          hint="Used to identify the lorry at collection"
-        />
-        <Input
-          label="Vehicle details"
-          placeholder="e.g. White Isuzu truck"
-          value={vehicle}
-          onChange={(e) => setVehicle(e.target.value)}
-        />
 
         <Button
           fullWidth
           size="lg"
           onClick={() => mutation.mutate()}
           loading={mutation.isPending}
-          disabled={!name.trim() || !phone.trim() || !lorryId.trim() || password.length < 6}
+          disabled={!name.trim() || !phone.trim() || password.length < 6}
         >
           Create driver account
         </Button>

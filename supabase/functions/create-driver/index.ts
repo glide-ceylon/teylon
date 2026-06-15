@@ -32,14 +32,14 @@ serve(async (req) => {
       throw new Error("Only agents can create drivers");
     }
 
-    const { name, phone, lorry_identifier, vehicle_details, password } = await req.json();
+    const { name, phone, email, password } = await req.json();
 
-    if (!name || !phone || !lorry_identifier) {
-      throw new Error("name, phone, and lorry_identifier are required");
+    if (!name || !phone) {
+      throw new Error("name and phone are required");
     }
 
-    // Drivers sign in with phone + password (no SMS/OTP needed). If the agent
-    // didn't choose one, generate a short readable password to hand over.
+    // Drivers sign in with phone (or email) + password — no SMS/OTP. If the
+    // agent didn't choose one, generate a short readable password to hand over.
     const finalPassword: string =
       password && password.length >= 6
         ? password
@@ -51,11 +51,13 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Create auth user for driver
+    // Create auth user for driver (email optional, phone always set).
     const { data: newUser, error: createUserError } = await adminClient.auth.admin.createUser({
       phone: phone,
+      email: email || undefined,
       password: finalPassword,
       phone_confirm: true,
+      email_confirm: email ? true : undefined,
       user_metadata: { full_name: name },
     });
 
@@ -79,14 +81,12 @@ serve(async (req) => {
       throw profileError;
     }
 
-    // Create driver record
+    // Create driver record (the person — no vehicle baked in).
     const { data: driver, error: driverError } = await adminClient
       .from("drivers")
       .insert({
         profile_id: driverUserId,
         org_id: callerProfile.org_id,
-        lorry_identifier: lorry_identifier,
-        vehicle_details: vehicle_details ?? null,
       })
       .select()
       .single();

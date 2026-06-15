@@ -52,7 +52,8 @@ const agentNav: NavItem[] = [
   { href: "/cash", label: "Cash", icon: CreditCard },
   { href: "/settlements", label: "Settlements", icon: BarChart2 },
   { section: "Team" },
-  { href: "/drivers", label: "Drivers", icon: Truck },
+  { href: "/drivers", label: "Drivers", icon: Users },
+  { href: "/vehicles", label: "Vehicles", icon: Truck },
 ] as NavItem[];
 
 function getNav(role: Role): NavItem[] {

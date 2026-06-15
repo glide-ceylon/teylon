@@ -45,12 +45,21 @@ export interface Worker {
   created_at: string;
 }
 
+export interface Vehicle {
+  id: string;
+  org_id: string;
+  identifier: string;
+  details: string | null;
+  created_at: string;
+}
+
 export interface Driver {
   id: string;
   profile_id: string;
   org_id: string;
-  lorry_identifier: string;
+  lorry_identifier: string | null;
   vehicle_details: string | null;
+  current_vehicle_id: string | null;
   created_at: string;
 }
 
@@ -63,6 +72,7 @@ export interface DriverCashDay {
   brought_back_cents: number | null;
   status: "open" | "reconciled" | "short" | "over";
   note: string | null;
+  vehicle_id: string | null;
   reconciled_at: string | null;
   created_at: string;
 }
@@ -75,6 +85,7 @@ export interface CollectionVisit {
   owner_id: string;
   collected_at: string;
   total_kg: number | null;
+  vehicle_id: string | null;
   note: string | null;
   status: "collected" | "priced" | "settled";
   owner_confirmed: boolean;

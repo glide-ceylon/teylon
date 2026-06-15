@@ -65,6 +65,17 @@ serve(async (req) => {
       owner_id = field.owner_id;
     }
 
+    // Stamp the driver's current vehicle onto the visit (soft link, for history).
+    let vehicle_id: string | null = null;
+    if (driver_id) {
+      const { data: driverRow } = await adminClient
+        .from("drivers")
+        .select("current_vehicle_id")
+        .eq("id", driver_id)
+        .single();
+      vehicle_id = driverRow?.current_vehicle_id ?? null;
+    }
+
     // Resolve worker IDs (create new workers as needed)
     const resolvedLines: { worker_id: string; kg: number }[] = [];
     const totalKg = pluckers.reduce((s, p) => s + p.kg, 0);
@@ -104,6 +115,7 @@ serve(async (req) => {
         driver_id,
         org_id: callerProfile.org_id,
         total_kg: totalKg,
+        vehicle_id,
         note: note ?? null,
         owner_confirmed: false,
         escalated: false,

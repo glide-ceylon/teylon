@@ -27,7 +27,7 @@ export default function DriverCashDayPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("drivers")
-        .select("id, lorry_identifier, profiles(full_name)")
+        .select("id, profiles(full_name, phone)")
         .eq("id", driverId)
         .single();
       return data;
@@ -39,7 +39,7 @@ export default function DriverCashDayPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("driver_cash_days")
-        .select("*")
+        .select("*, vehicles(identifier, details)")
         .eq("driver_id", driverId)
         .eq("day", selectedDay)
         .maybeSingle();
@@ -101,7 +101,7 @@ export default function DriverCashDayPage() {
     <AppShell>
       <PageHeader
         title={driverName}
-        subtitle={`${driver?.lorry_identifier ?? "—"} · Cash`}
+        subtitle={`${(driver?.profiles as any)?.phone ?? "Cash"} · Cash`}
       />
 
       <div className="px-4 md:px-6 pb-8 max-w-lg space-y-4">
@@ -121,6 +121,14 @@ export default function DriverCashDayPage() {
             {/* Cash summary */}
             <Card>
               <div className="space-y-3">
+                {(cashDay as any).vehicles && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-tea-500">Vehicle</span>
+                    <span className="font-semibold text-tea-900">
+                      {(cashDay as any).vehicles.identifier}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-sm text-tea-500">Float given</span>
                   <span className="font-semibold text-tea-900">{formatLKR(cashDay.float_out_cents)}</span>
