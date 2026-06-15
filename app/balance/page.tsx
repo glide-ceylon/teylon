@@ -23,7 +23,7 @@ export default function BalancePage() {
         `)
         .eq("owner_id", profile!.id)
         .eq("owner_confirmed", true)
-        .neq("pay_mode", "instant")
+        .or("pay_mode.is.null,pay_mode.neq.instant") // null = treat as monthly
         .neq("status", "settled")
         .order("collected_at", { ascending: false });
       return data ?? [];

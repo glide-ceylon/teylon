@@ -59,7 +59,7 @@ serve(async (req) => {
       .from("collection_visits")
       .select("total_kg, tea_rate_cents, fields(tea_rate_cents)")
       .eq("owner_id", owner_id)
-      .neq("pay_mode", "instant")
+      .or("pay_mode.is.null,pay_mode.neq.instant") // null pay_mode = treat as monthly
       .eq("org_id", org_id)
       .eq("owner_confirmed", true)
       .gte("collected_at", period_start + "T00:00:00")
