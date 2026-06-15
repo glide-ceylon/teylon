@@ -19,25 +19,14 @@ export default function OwnersPage() {
   const { data: owners, isLoading } = useQuery({
     queryKey: ["owners", profile?.org_id],
     queryFn: async () => {
-      // Get all owners this org has collected from
-      const { data: visits } = await supabase
-        .from("collection_visits")
-        .select("owner_id, profiles!collection_visits_owner_id_fkey(id, full_name, phone, is_shadow)")
-        .eq("org_id", profile!.org_id);
-
-      if (!visits) return [];
-
-      // Deduplicate by owner_id
-      const seen = new Set<string>();
-      const owners = [];
-      for (const v of visits) {
-        const p = (v as any).profiles;
-        if (p && !seen.has(v.owner_id)) {
-          seen.add(v.owner_id);
-          owners.push(p);
-        }
-      }
-      return owners;
+      // All owners the agent manages (shadow + linked) live in their org.
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, phone, is_shadow")
+        .eq("role", "owner")
+        .eq("org_id", profile!.org_id)
+        .order("full_name");
+      return data ?? [];
     },
     enabled: !!profile?.org_id,
   });
@@ -76,7 +65,7 @@ export default function OwnersPage() {
           <EmptyState
             icon={Users}
             title="No owners yet"
-            description="Owners appear here after you record a collection for them"
+            description="Add an owner to start recording collections and payments"
             action={{
               label: "Create shadow owner",
               onClick: () => (window.location.href = "/owners/new"),

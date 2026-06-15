@@ -30,21 +30,13 @@ export default function NewSettlementPage() {
   const { data: owners } = useQuery({
     queryKey: ["owners-list", profile?.org_id],
     queryFn: async () => {
-      const { data: visits } = await supabase
-        .from("collection_visits")
-        .select("owner_id, profiles!collection_visits_owner_id_fkey(id, full_name)")
-        .eq("org_id", profile!.org_id);
-      if (!visits) return [];
-      const seen = new Set<string>();
-      const list: any[] = [];
-      for (const v of visits) {
-        const p = (v as any).profiles;
-        if (p && !seen.has(v.owner_id)) {
-          seen.add(v.owner_id);
-          list.push(p);
-        }
-      }
-      return list.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .eq("role", "owner")
+        .eq("org_id", profile!.org_id)
+        .order("full_name");
+      return data ?? [];
     },
     enabled: !!profile?.org_id,
   });
