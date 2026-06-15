@@ -54,7 +54,7 @@ export default function DriversPage() {
         ) : (
           <div className="space-y-2">
             {drivers?.map((d: any) => (
-              <Link key={d.id} href={`/cash/${d.id}`}>
+              <Link key={d.id} href={`/drivers/${d.id}`}>
                 <Card padded={false} className="p-4 active:scale-[0.98] transition-transform">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-tea-100">
